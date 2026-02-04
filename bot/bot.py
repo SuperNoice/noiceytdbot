@@ -176,7 +176,7 @@ async def process_yt_link_message(message_with_url: Message, context: ContextTyp
             message = ("\n" + yt_url_pattern.sub(" ", message_with_url.text)).rstrip("\n ")
 
             await message_with_url.set_reaction("👀")
-            status_message = StatusMessage(await context.bot.send_message(message_with_url.chat_id, "Статус: Запуск", disable_notification=True))
+            status_message = StatusMessage(await context.bot.send_message(message_with_url.chat_id, "Статус: Запуск", message_thread_id=message_with_url.message_thread_id, disable_notification=True))
             
             vid_title, file_path = await dl_mp4(video_url, R"./videos", status_message)
         
@@ -195,7 +195,8 @@ async def process_yt_link_message(message_with_url: Message, context: ContextTyp
                 connect_timeout=180,
                 caption=f"<a href=\"{video_url}\">{vid_title}</a>{message}<i>\nby {message_with_url.from_user.name}</i>",
                 parse_mode="HTML",
-                reply_to_message_id=message_with_url.reply_to_message.id if message_with_url.reply_to_message is not None else None
+                reply_to_message_id=message_with_url.reply_to_message.id if message_with_url.reply_to_message is not None else None,
+                message_thread_id=message_with_url.message_thread_id
             )
 
             await message_with_url.delete()
@@ -233,7 +234,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         for err in err_array:
-            await update.effective_user.send_message(err)
+            await update.effective_user.send_message(err, message_thread_id=update.message.message_thread_id)
     except Exception as e:
         await update.message.reply_text(str(e))
 
