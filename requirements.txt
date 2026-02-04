@@ -1,0 +1,7 @@
+yt-dlp
+fontstyle
+colored
+httpx
+requests
+python-telegram-bot
+bgutil-ytdlp-pot-provider
