@@ -10,6 +10,7 @@ import shutil
 import time
 import traceback
 import sys
+import json
 
 from telegram import ForceReply, Update, Message, MessageEntity
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -27,9 +28,30 @@ b = attr(0)
 import fontstyle as fs
 import yt_dlp
 
+
+def load_threads_priority():
+    if not os.path.exists("./threads_priority.json"):
+        return {}
+    
+    with open("./threads_priority.json", "r") as file:
+        content = file.read()
+        if content == "": return {}
+        try:
+            return json.loads(content)
+        except:
+            return {}
+    
+
+def write_threads_priority(dict):
+    with open("./threads_priority.json", "w") as file:
+        file.write(json.dumps(dict))
+
+
 yt_url_pattern = re.compile(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/((.+\s)|(.+$))")
 yt_clearing_url_pattern = re.compile(r"&.+")
 yt_vid_id_pattern = re.compile(r"(^https?://)?(www\.)?(youtube\.com|youtu\.be)/((clip/)|(shorts/)|(watch\?v=))?|\?.+|\?$|&.+")
+
+threads_priority = load_threads_priority()
 
 
 class StatusMessage:
@@ -175,8 +197,13 @@ async def process_yt_link_message(message_with_url: Message, context: ContextTyp
             video_url = video_url[0].strip(" ")
             message = ("\n" + yt_url_pattern.sub(" ", message_with_url.text)).rstrip("\n ")
 
+            chat_id = message_with_url.chat_id
+            message_thread_id = threads_priority.get(chat_id)
+            if message_thread_id is None:
+                message_thread_id = message_with_url.message_thread_id
+
             await message_with_url.set_reaction("👀")
-            status_message = StatusMessage(await context.bot.send_message(message_with_url.chat_id, "Статус: Запуск", message_thread_id=message_with_url.message_thread_id, disable_notification=True))
+            status_message = StatusMessage(await context.bot.send_message(chat_id, "Статус: Запуск", message_thread_id=message_thread_id, disable_notification=True))
             
             vid_title, file_path = await dl_mp4(video_url, R"./videos", status_message)
         
@@ -186,7 +213,7 @@ async def process_yt_link_message(message_with_url: Message, context: ContextTyp
                     raise Exception("Error: Файл слишком большой")
             
             await context.bot.send_video(
-                message_with_url.chat_id, 
+                chat_id, 
                 file_path, 
                 supports_streaming=True, 
                 write_timeout=180,
@@ -196,7 +223,7 @@ async def process_yt_link_message(message_with_url: Message, context: ContextTyp
                 caption=f"<a href=\"{video_url}\">{vid_title}</a>{message}<i>\nby {message_with_url.from_user.name}</i>",
                 parse_mode="HTML",
                 reply_to_message_id=message_with_url.reply_to_message.id if message_with_url.reply_to_message is not None else None,
-                message_thread_id=message_with_url.message_thread_id
+                message_thread_id=message_thread_id
             )
 
             await message_with_url.delete()
@@ -239,6 +266,19 @@ async def log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(str(e))
 
 
+async def set_default_thread(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global threads_priority
+    chat_id = update.effective_chat.id
+    thread_id = update.message.message_thread_id
+
+    if thread_id is None:
+        await update.message.reply_text(f"В этом чате нет топиков", message_thread_id=thread_id)
+    else:
+        threads_priority[chat_id] = thread_id
+        write_threads_priority(threads_priority)
+        await update.message.reply_text(f"Теперь видео будут отправлятся в этот топик", message_thread_id=thread_id)
+
+
 def main() -> None:
     if not os.path.exists("./videos"):
         os.mkdir("./videos")
@@ -252,6 +292,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("download", download))
     application.add_handler(CommandHandler("log", log))
+    application.add_handler(CommandHandler("default", set_default_thread))
 
     # on non command i.e message - echo the message on Telegram
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
